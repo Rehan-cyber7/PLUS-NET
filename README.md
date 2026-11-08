@@ -115,19 +115,11 @@ npm run build
 
 `npm run test:native` runs lightweight Java checks for the native chunk scheduler. GitHub Actions performs the Android build on a hosted runner.
 
-## Build and install an Android debug APK
+## install an Android debug APK
 
-You do not need Android Studio on your laptop. GitHub Actions creates the Capacitor Android project and builds the debug APK in the cloud.
-
-1. Push the project to your GitHub repository.
-2. Open the repository's **Actions** tab.
-3. Select **Build PlusNet Android APK**.
-4. Run the workflow manually, or push a branch commit.
-5. When it succeeds, open the run and download the `plusnet-android-debug-apk` artifact.
-6. Extract the artifact ZIP and transfer `app-debug.apk` to your Android phone.
-7. Open the APK and approve installation if Android asks.
-
-The workflow caches a debug signing key so later debug APKs can update an installed PlusNet test build. Keep that Actions cache available between builds. If an APK is signed with a different key, Android rejects it as an update; uninstall the older test app before installing the new APK. Uninstalling can delete local app data.
+1. When it succeeds, open the run and download the `plusnet-android-debug-apk` artifact.
+2. Extract the artifact ZIP and transfer `app-debug.apk` to your Android phone.
+3. Open the APK and approve installation if Android asks.
 
 **Debug-build note:** This APK is for development and testing. It is not a production-signed Google Play release.
 
