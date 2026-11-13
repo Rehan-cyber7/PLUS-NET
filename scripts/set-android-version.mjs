@@ -2,8 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-const versionName = process.env.ANDROID_VERSION_NAME || packageJson.version || '0.4.0'
-const versionCode = Number(process.env.ANDROID_VERSION_CODE || '5')
+const versionName = process.env.ANDROID_VERSION_NAME || packageJson.version || '0.4.2'
+const versionCode = Number(process.env.ANDROID_VERSION_CODE || '7')
 
 if (!Number.isInteger(versionCode) || versionCode < 1) {
   throw new Error(`ANDROID_VERSION_CODE must be a positive integer; received: ${versionCode}`)

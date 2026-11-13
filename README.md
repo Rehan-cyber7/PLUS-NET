@@ -1,6 +1,6 @@
 # PlusNet
 
-**PlusNet is an Android download manager that can split a supported file download across Wi-Fi and mobile data.** It combines a React + TypeScript interface with a native Capacitor plugin that routes individual HTTP range requests over selected Android networks.
+**PlusNet is an Android download manager that can split a supported file download across Wi-Fi and mobile data, at full speed on both at once.** (An optional "Wi-Fi first" mode under Networks saves mobile data.) It combines a React + TypeScript interface with a native Capacitor plugin that routes individual HTTP range requests over selected Android networks.
 
 > **App version:** `0.4.0`  
 > **Android versionCode:** `5`  
@@ -115,74 +115,13 @@ npm run build
 
 `npm run test:native` runs lightweight Java checks for the native chunk scheduler. GitHub Actions performs the Android build on a hosted runner.
 
-## Build and install an Android debug APK
+## install an Android debug APK
 
-You do not need Android Studio on your laptop. GitHub Actions creates the Capacitor Android project and builds the debug APK in the cloud.
-
-1. Push the project to your GitHub repository.
-2. Open the repository's **Actions** tab.
-3. Select **Build PlusNet Android APK**.
-4. Run the workflow manually, or push a branch commit.
-5. When it succeeds, open the run and download the `plusnet-android-debug-apk` artifact.
-6. Extract the artifact ZIP and transfer `app-debug.apk` to your Android phone.
-7. Open the APK and approve installation if Android asks.
-
-The workflow caches a debug signing key so later debug APKs can update an installed PlusNet test build. Keep that Actions cache available between builds. If an APK is signed with a different key, Android rejects it as an update; uninstall the older test app before installing the new APK. Uninstalling can delete local app data.
+1. When it succeeds, open the run and download the `plusnet-android-debug-apk` artifact.
+2. Extract the artifact ZIP and transfer `app-debug.apk` to your Android phone.
+3. Open the APK and approve installation if Android asks.
 
 **Debug-build note:** This APK is for development and testing. It is not a production-signed Google Play release.
-
-## Create a GitHub Release
-
-The workflow publishes a GitHub Release whenever you push a version tag matching `v*`. It builds the APK, creates a SHA-256 checksum and attaches both files to the release.
-
-### Publish `v0.4.0`
-
-First, commit and push the release-ready files to your default branch:
-
-```bash
-git add .
-git commit -m "Prepare PlusNet v0.4.0 release"
-git push
-```
-
-Then create and push the annotated tag:
-
-```bash
-git tag -a v0.4.0 -m "PlusNet v0.4.0"
-git push origin v0.4.0
-```
-
-Pushing the tag starts the workflow. When it succeeds, GitHub creates or updates a release titled **PlusNet v0.4.0** and attaches:
-
-- `PlusNet-0.4.0-debug.apk`
-- `PlusNet-0.4.0-SHA256SUMS.txt`
-
-Open **GitHub repository → Releases** to view and download the release. The workflow requests that the new release be marked **Latest**.
-
-> Do not reuse a tag that has already been published. A tag must match the root `package.json` version exactly: `v` followed by the version.
-
-## Versioning future changes
-
-Keep the root app and local plugin versions in sync. For the next patch version, for example `0.4.1`:
-
-1. Set `package.json` version to `0.4.1`.
-2. Set `plugins/plusnet-engine/package.json` version to `0.4.1`.
-3. Increase `ANDROID_VERSION_CODE` in `.github/workflows/android-apk.yml` from `5` to `6`. Never reuse an Android version code already distributed to testers.
-4. Update `RELEASE_NOTES.md`.
-5. Commit and push the changes, then create and push tag `v0.4.1`.
-
-```bash
-git add package.json plugins/plusnet-engine/package.json \
-  .github/workflows/android-apk.yml RELEASE_NOTES.md
-git commit -m "Prepare PlusNet v0.4.1 release"
-git push
-git tag -a v0.4.1 -m "PlusNet v0.4.1"
-git push origin v0.4.1
-```
-
-## App identity and upgrade note
-
-This rebrand changes the Android application ID from `app.plexo.mobile` to `app.plusnet.mobile`. Android treats PlusNet as a new app rather than an in-place update to an already-installed Plexo build. The old app can remain installed separately, but its local history and preferences are not automatically transferred. Future PlusNet builds must keep `app.plusnet.mobile` unchanged to update the PlusNet installation.
 
 ## Troubleshooting native network routes
 

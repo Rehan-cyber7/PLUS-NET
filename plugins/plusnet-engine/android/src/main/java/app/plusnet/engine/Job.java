@@ -341,6 +341,16 @@ final class Job {
 
     private boolean complete() { return ranges ? map.complete() : singleDone; }
 
+    private Stat byId(String id) {
+        for (Stat s : nets) if (s.id.equals(id)) return s;
+        throw new IllegalStateException(id);
+    }
+
+    /** Whether the download's mode lets this network work right now (see Policy). */
+    private boolean allowed(Stat s) {
+        return Policy.allowed(eng.together(), s.id, id -> usable(byId(id)));
+    }
+
     private boolean usable(Stat s) { return s.enabled && !s.failed && eng.nets.online(s.id); }
 
     private boolean anyEnabled() {
@@ -361,13 +371,13 @@ final class Job {
     private void spawn(Run r) {
         if (!ranges) { // one stream, on the first network that works
             if (r.live.get() == 0 && !singleDone) {
-                for (Stat s : nets) if (usable(s)) { launch(r, s, true); break; }
+                for (Stat s : nets) if (usable(s) && allowed(s)) { launch(r, s, true); break; }
             }
             return;
         }
         if (!map.hasWaiting()) return;
         for (Stat s : nets) {
-            if (usable(s) && s.streams.get() == 0) for (int k = 0; k < STREAMS; k++) launch(r, s, false);
+            if (usable(s) && allowed(s) && s.streams.get() == 0) for (int k = 0; k < STREAMS; k++) launch(r, s, false);
         }
     }
 
@@ -388,9 +398,10 @@ final class Job {
 
     private void work(Run r, Stat s) {
         try {
-            while (!r.stop && s.enabled) {
+            while (!r.stop && s.enabled && allowed(s)) {
+                // a network that may not work right now counts as unavailable: its chunks go to the one that may
                 boolean[] usableNetworks = new boolean[Nets.IDS.length];
-                for (Stat candidate : nets) usableNetworks[candidate.idx] = usable(candidate);
+                for (Stat candidate : nets) usableNetworks[candidate.idx] = usable(candidate) && allowed(candidate);
                 int c = map.claim(s.idx, usableNetworks);
                 if (c < 0) return;
                 try {
@@ -399,7 +410,7 @@ final class Job {
                     s.fails.set(0);
                 } catch (Exception e) {
                     map.release(c); // what was written stays: the next try starts after it
-                    if (r.stop || !s.enabled || !eng.nets.online(s.id)) return; // spawn() restarts it when it's back
+                    if (r.stop || !s.enabled || !allowed(s) || !eng.nets.online(s.id)) return; // spawn() restarts it when it's back
                     s.error = Probe.message(e);
                     if (s.fails.incrementAndGet() >= MAX_FAILS) { s.failed = true; return; }
                     Thread.sleep(Math.min(8000, 500L << s.fails.get()));
@@ -456,7 +467,8 @@ final class Job {
         byte[] buf = new byte[32 * 1024];
         long left = len < 0 ? Long.MAX_VALUE : len;
         while (left > 0) {
-            if (r.stop || !s.enabled) throw new IOException("Stopped");
+            // a split download hands over mid-chunk when the preferred network returns; one that isn't split can't
+            if (r.stop || !s.enabled || (chunk >= 0 && !allowed(s))) throw new IOException("Stopped");
             int n = in.read(buf, 0, (int) Math.min(buf.length, left));
             if (n < 0) {
                 if (len < 0) return;

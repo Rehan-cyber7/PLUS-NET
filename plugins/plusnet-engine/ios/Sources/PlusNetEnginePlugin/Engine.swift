@@ -8,6 +8,8 @@ final class Nets {
     static let ids = ["wifi", "cellular", "ethernet"]
     static let names = ["Wi-Fi", "Mobile data", "Ethernet"]
     private static let types: [NWInterface.InterfaceType] = [.wifi, .cellular, .wiredEthernet]
+    /// The order "Wi-Fi first" prefers: a cable, then Wi-Fi, mobile data last.
+    static let priority = ["ethernet", "wifi", "cellular"]
 
     var onChange: (() -> Void)?
     private var up: [String: Bool] = [:]
@@ -56,6 +58,8 @@ final class Engine {
     private var lastTick = DispatchTime.now().uptimeNanoseconds
     private var idleLocked = false
     private(set) var active = 0
+    /// true (default): every usable network works at once. false: Wi-Fi first, mobile data only as a backup.
+    private(set) var together = true
     private let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "plusnet.tick"))
 
     private init() {
@@ -67,6 +71,7 @@ final class Engine {
             l.bytesPerSec = Int64(defaults.integer(forKey: "limit.\(id)"))
             limiters[id] = l
         }
+        together = defaults.object(forKey: "together") as? Bool ?? true
         nets.onChange = { [weak self] in self?.onNetworks?(self?.networks() ?? []) }
         nets.start()
         loadHistory()
@@ -82,6 +87,11 @@ final class Engine {
     func setLimit(_ netID: String, _ bps: Int64) {
         limiters[netID]?.bytesPerSec = bps
         defaults.set(Int(max(0, bps)), forKey: "limit.\(netID)")
+    }
+
+    func setMode(together: Bool) {
+        self.together = together
+        defaults.set(together, forKey: "together")
     }
 
     func limits() -> [String: Any] {

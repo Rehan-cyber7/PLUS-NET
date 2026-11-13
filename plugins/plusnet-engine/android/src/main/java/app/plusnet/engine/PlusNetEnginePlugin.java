@@ -131,11 +131,18 @@ public class PlusNetEnginePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setMode(PluginCall call) {
+        eng.setMode("together".equals(call.getString("mode", "backup")));
+        call.resolve();
+    }
+
+    @PluginMethod
     public void list(PluginCall call) {
         try {
             JSObject o = new JSObject();
             o.put("downloads", eng.list());
             o.put("limits", eng.limits());
+            o.put("mode", eng.mode());
             call.resolve(o);
         } catch (JSONException e) {
             call.reject(Probe.message(e));

@@ -20,8 +20,8 @@ public class CoreCheck {
         assert m.bytes() == 1000 && !m.complete() && m.hasWaiting();
 
         int n;
-        while ((n = m.claim(0, both)) >= 0) m.finish(n, 0);
-        while ((n = m.claim(1, both)) >= 0) m.finish(n, 1);
+        int turn = 0;
+        while ((n = m.claim(turn % 2, both)) >= 0) { m.finish(n, turn % 2); turn++; }
         assert m.complete() && !m.hasWaiting() && m.claim(0, both) == -1;
         assert m.cells(100).length() == 81 && m.cells(4).length() == 4;
         assert m.cells(100).startsWith("01"): m.cells(100);
@@ -48,6 +48,44 @@ public class CoreCheck {
         l.reserve(500_000);
         long wait = l.reserve(500_000); // the second half-megabyte waits for the first
         assert wait > 400_000_000L && wait < 600_000_000L : wait;
+                // Regression: a network that has finished its own share must keep helping with the other's. Before, it went
+        // idle while the other network was still working (the file ended up exactly half and half).
+        ChunkMap share = new ChunkMap(40L * ChunkMap.SIZE, new int[] {0, 1});
+        int doneByMobile = 0;
+        while ((n = share.claim(1, both)) >= 0) { share.finish(n, 1); doneByMobile++; }
+        assert doneByMobile == share.count && share.complete(); // mobile data alone carried everything it was allowed to
+
+        // Wi-Fi first with this chunk map: chunks are pre-assigned half to each network, yet while mobile data
+        // is not allowed to work it can claim nothing and Wi-Fi ends up carrying the whole file.
+        ChunkMap first = new ChunkMap(40L * ChunkMap.SIZE, new int[] {0, 1});
+        boolean[] wifiOnlyWorks = {true, false, false};
+        assert first.claim(1, wifiOnlyWorks) == -1;
+        int takenByWifi = 0;
+        while ((n = first.claim(0, wifiOnlyWorks)) >= 0) { first.finish(n, 0); takenByWifi++; }
+        assert takenByWifi == first.count && first.complete();
+        // ...and when Wi-Fi drops mid-download, mobile data picks up exactly where Wi-Fi left off
+        ChunkMap handover = new ChunkMap(40L * ChunkMap.SIZE, new int[] {0, 1});
+        int w = handover.claim(0, wifiOnlyWorks);
+        handover.add(w, 5000);
+        handover.release(w); // Wi-Fi stopped halfway through this chunk
+        boolean[] mobileOnlyWorks = {false, true, false};
+        int m2 = handover.claim(1, mobileOnlyWorks);
+        assert m2 >= 0 && handover.from(m2) == (long) m2 * handover.chunkSize + (m2 == w ? 5000 : 0);
+        assert m2 == w ? true : handover.claim(1, mobileOnlyWorks) >= 0; // it can reach Wi-Fi's chunks too
+
+        // The rule itself: only the best usable network may work; the rest wait, and take over when it is gone
+        java.util.Set<String> up = new java.util.HashSet<>(java.util.Arrays.asList("wifi", "cellular"));
+        assert Policy.allowed(false, "wifi", up::contains) && !Policy.allowed(false, "cellular", up::contains);
+        up.remove("wifi"); // Wi-Fi dropped: mobile data takes over
+        assert !Policy.allowed(false, "wifi", up::contains) && Policy.allowed(false, "cellular", up::contains);
+        up.add("wifi"); // and gives way again when it returns
+        assert Policy.allowed(false, "wifi", up::contains) && !Policy.allowed(false, "cellular", up::contains);
+        up.add("ethernet"); // a cable beats Wi-Fi
+        assert Policy.allowed(false, "ethernet", up::contains) && !Policy.allowed(false, "wifi", up::contains);
+        up.clear();
+        assert !Policy.allowed(false, "wifi", up::contains); // nothing usable: nothing allowed
+        up.addAll(java.util.Arrays.asList("wifi", "cellular")); // together: all of them
+        assert Policy.allowed(true, "wifi", up::contains) && Policy.allowed(true, "cellular", up::contains);
         System.out.println("core ok");
     }
 }

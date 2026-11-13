@@ -4,12 +4,12 @@ The `Build PlusNet Android APK` workflow builds the Android debug APK on GitHub-
 
 ## Current release
 
-- Root app version: `0.4.0`
-- Native plugin version: `0.4.0`
-- Android versionCode: `5`
+- Root app version: `0.4.2`
+- Native plugin version: `0.4.2`
+- Android versionCode: `7`
 - Android application ID: `app.plusnet.mobile`
-- Git tag: `v0.4.0`
-- Release title: `PlusNet v0.4.0`
+- Git tag: `v0.4.2`
+- Release title: `PlusNet v0.4.2`
 
 ## Publish the release
 

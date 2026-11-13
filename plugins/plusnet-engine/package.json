@@ -1,6 +1,6 @@
 {
   "name": "plusnet-engine",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "Native multi-network download engine for PlusNet",
   "license": "MIT",
   "main": "index.js",

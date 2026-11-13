@@ -1,6 +1,6 @@
 {
   "name": "plusnet-mobile",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "private": true,
   "description": "PlusNet for Android and iOS: download files over Wi-Fi and mobile data together",
   "license": "MIT",
@@ -10,7 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "node --experimental-strip-types scripts/format.test.ts",
     "sync": "npm run build && cap sync",
-    "test:native": "mkdir -p /tmp/plusnet-jc && java -m jdk.compiler/com.sun.tools.javac.Main -d /tmp/plusnet-jc plugins/plusnet-engine/android/src/main/java/app/plusnet/engine/ChunkMap.java plugins/plusnet-engine/android/src/main/java/app/plusnet/engine/Limiter.java plugins/plusnet-engine/android/src/test/java/app/plusnet/engine/CoreCheck.java && java -ea -cp /tmp/plusnet-jc app.plusnet.engine.CoreCheck"
+    "test:native": "mkdir -p /tmp/plusnet-jc && java -m jdk.compiler/com.sun.tools.javac.Main -d /tmp/plusnet-jc plugins/plusnet-engine/android/src/main/java/app/plusnet/engine/ChunkMap.java plugins/plusnet-engine/android/src/main/java/app/plusnet/engine/Limiter.java plugins/plusnet-engine/android/src/main/java/app/plusnet/engine/Policy.java plugins/plusnet-engine/android/src/test/java/app/plusnet/engine/CoreCheck.java && java -ea -cp /tmp/plusnet-jc app.plusnet.engine.CoreCheck"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",

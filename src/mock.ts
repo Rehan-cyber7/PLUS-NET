@@ -1,5 +1,5 @@
 import { WebPlugin } from '@capacitor/core'
-import type { Dl, EngineApi, Net, NetId, Probe } from './engine'
+import type { Dl, EngineApi, Mode, Net, NetId, Probe } from './engine'
 
 const NETS: Net[] = [
   { id: 'wifi', name: 'Wi-Fi', online: true },
@@ -9,9 +9,10 @@ const RATE: Record<string, number> = { wifi: 6e6, cellular: 2e6 }
 const BLOCKS = 120
 
 /** Browser stand-in for the native engines: fake downloads at a fixed speed per network. */
-export class MockEngine extends WebPlugin implements Pick<EngineApi, 'networks' | 'probe' | 'start' | 'pause' | 'resume' | 'remove' | 'setNetwork' | 'setLimit' | 'list' | 'openFile'> {
+export class MockEngine extends WebPlugin implements Pick<EngineApi, 'networks' | 'probe' | 'start' | 'pause' | 'resume' | 'remove' | 'setNetwork' | 'setLimit' | 'setMode' | 'list' | 'openFile'> {
   private dls = new Map<string, Dl>()
   private limits: Partial<Record<NetId, number>> = {}
+  private mode: Mode = 'together'
 
   constructor() {
     super()
@@ -80,8 +81,11 @@ export class MockEngine extends WebPlugin implements Pick<EngineApi, 'networks' 
   async setLimit({ network, bytesPerSec }: { network: NetId; bytesPerSec: number }): Promise<void> {
     this.limits[network] = bytesPerSec
   }
-  async list(): Promise<{ downloads: Dl[]; limits: Partial<Record<NetId, number>> }> {
-    return { downloads: [...this.dls.values()], limits: this.limits }
+  async setMode({ mode }: { mode: Mode }): Promise<void> {
+    this.mode = mode
+  }
+  async list(): Promise<{ downloads: Dl[]; limits: Partial<Record<NetId, number>>; mode: Mode }> {
+    return { downloads: [...this.dls.values()], limits: this.limits, mode: this.mode }
   }
   async openFile(): Promise<void> {}
 }

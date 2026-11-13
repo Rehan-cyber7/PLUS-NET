@@ -12,7 +12,7 @@ permissions:
 
 env:
   CI: true
-  ANDROID_VERSION_CODE: '5'
+  ANDROID_VERSION_CODE: '7'
 
 jobs:
   build-android:

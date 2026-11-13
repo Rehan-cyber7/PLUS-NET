@@ -92,7 +92,9 @@ final class Job: @unchecked Sendable {
             let on = eng.nets.online(s.id)
             guard s.enabled || on || s.bytes > 0 else { return nil }
             let state = !s.enabled ? "off" : s.failed ? "failed" : on ? "on" : "offline"
-            return ["id": s.id, "enabled": s.enabled, "state": state, "bytes": s.bytes, "speed": down ? s.speed : 0]
+            var row: [String: Any] = ["id": s.id, "enabled": s.enabled, "state": state, "bytes": s.bytes, "speed": down ? s.speed : 0]
+            row["error"] = s.error ?? NSNull()
+            return row
         }
         var o: [String: Any] = [
             "id": id, "url": url, "fileName": name ?? "…", "status": st, "total": total, "done": done(),
@@ -220,6 +222,16 @@ final class Job: @unchecked Sendable {
 
     private func complete() -> Bool { sync { ranges ? (map?.complete ?? false) : singleDone } }
     private func enabled(_ i: Int) -> Bool { sync { stats[i].enabled } }
+    /// Whether the download's mode lets this network work right now: together, all usable ones; otherwise
+    /// only the best usable one, the others taking over when it is gone and giving way when it is back.
+    private func allowed(_ i: Int) -> Bool {
+        if eng.together { return true }
+        for id in Nets.priority {
+            if let j = Nets.ids.firstIndex(of: id), usable(j) { return j == i }
+        }
+        return false
+    }
+
     private func usable(_ i: Int) -> Bool {
         let ok = sync { stats[i].enabled && !stats[i].failed }
         return ok && eng.nets.online(Nets.ids[i])
@@ -230,14 +242,14 @@ final class Job: @unchecked Sendable {
 
     private func spawn(_ group: inout ThrowingTaskGroup<Void, Error>) {
         if !sync({ ranges }) {  // one stream, on the first network that works
-            if sync({ live == 0 && !singleDone }), let i = stats.indices.first(where: { usable($0) }) {
+            if sync({ live == 0 && !singleDone }), let i = stats.indices.first(where: { usable($0) && allowed($0) }) {
                 sync { live += 1; stats[i].streams += 1 }
                 group.addTask { await self.single(i) }
             }
             return
         }
         guard let map = sync({ self.map }), map.hasWaiting else { return }
-        for i in stats.indices where usable(i) && sync({ stats[i].streams }) == 0 {
+        for i in stats.indices where usable(i) && allowed(i) && sync({ stats[i].streams }) == 0 {
             for _ in 0..<Job.streamsPerNet {
                 sync { live += 1; stats[i].streams += 1 }
                 group.addTask { await self.work(i, map) }
@@ -247,15 +259,15 @@ final class Job: @unchecked Sendable {
 
     private func work(_ i: Int, _ map: ChunkMap) async {
         defer { sync { stats[i].streams -= 1; live -= 1 } }
-        while !Task.isCancelled && enabled(i) {
+        while !Task.isCancelled && enabled(i) && allowed(i) {
             guard let c = map.claim() else { return }
             do {
                 try await fetch(i, c, map)
                 map.finish(c, net: i)
-                sync { stats[i].fails = 0 }
+                sync { stats[i].fails = 0; stats[i].error = nil }
             } catch {
                 map.release(c)  // what was written stays: the next try starts after it
-                if Task.isCancelled || !enabled(i) || !eng.nets.online(Nets.ids[i]) { return }  // spawn() restarts it when it's back
+                if Task.isCancelled || !enabled(i) || !allowed(i) || !eng.nets.online(Nets.ids[i]) { return }  // spawn() restarts it when it's back
                 let n: Int = sync {
                     stats[i].error = error.localizedDescription
                     stats[i].fails += 1
@@ -275,7 +287,7 @@ final class Job: @unchecked Sendable {
         let reply = try await HTTP.get(url, via: eng.nets.interface(Nets.ids[i]), range: "bytes=\(from)-\(to)", bodyStatus: [206]) { data in
             // never take more than was asked for, even if the server sends more
             let part = data.prefix(Int(to + 1 - pos.v))
-            try await self.store(Data(part), i, at: pos.v)
+            try await self.store(Data(part), i, at: pos.v, split: true)
             pos.v += Int64(part.count)
             map.add(c, part.count)
         }
@@ -292,7 +304,7 @@ final class Job: @unchecked Sendable {
         sync { plain = 0 }  // no ranges: a retry starts the file again
         do {
             let reply = try await HTTP.get(url, via: eng.nets.interface(Nets.ids[i]), bodyStatus: [200]) { data in
-                try await self.store(data, i, at: pos.v)
+                try await self.store(data, i, at: pos.v, split: false)
                 pos.v += Int64(data.count)
                 self.sync { self.plain += Int64(data.count) }
             }
@@ -310,8 +322,9 @@ final class Job: @unchecked Sendable {
     }
 
     /// Writes a piece of the body at its offset, under the network's speed cap.
-    private func store(_ d: Data, _ i: Int, at off: Int64) async throws {
-        if Task.isCancelled || !enabled(i) { throw HTTPError("Stopped") }
+    private func store(_ d: Data, _ i: Int, at off: Int64, split: Bool) async throws {
+        // a split download hands over mid-chunk when the preferred network returns; one that isn't split can't
+        if Task.isCancelled || !enabled(i) || (split && !allowed(i)) { throw HTTPError("Stopped") }
         let wait = eng.limiter(Nets.ids[i]).reserve(d.count)
         if wait > 0 { try await Task.sleep(nanoseconds: wait) }
         let handle = fd

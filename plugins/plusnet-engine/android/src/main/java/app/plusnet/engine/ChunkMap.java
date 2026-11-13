@@ -3,8 +3,8 @@ package app.plusnet.engine;
 /**
  * Tracks byte ranges for a download. Chunks are initially spread round-robin over the active
  * networks so the first network whose worker thread happens to run cannot claim the entire file.
- * A different active network can take over chunks assigned to an unavailable/failed network, and
- * can help with remaining chunks once every active network has claimed its own waiting work.
+ * That is only where each network starts: once its own chunks are gone it takes any waiting chunk,
+ * so no network sits idle while there is work left, and the total speed is the sum of the speeds.
  */
 final class ChunkMap {
     /** Largest chunk size; smaller files use smaller chunks so both transports can participate. */
@@ -51,37 +51,17 @@ final class ChunkMap {
     }
 
     /**
-     * Claim a chunk for one network. Each network takes its own assigned chunks first. A network
-     * may take another network's pending chunk only when that owner is no longer usable, or when
-     * all pending chunks assigned to currently usable networks have already been claimed.
+     * Claim a chunk for one network: its own assigned chunks first, so that every network gets work
+     * from the first second, then ANY waiting chunk. A network that is done with its share therefore
+     * keeps helping with everyone else's, and the faster network ends up carrying more of the file.
+     * A network that is not usable (offline, disabled, failed, or held back by the mode) gets nothing.
      */
     synchronized int claim(int netIndex, boolean[] usable) {
         if (netIndex < 0 || netIndex >= usable.length || !usable[netIndex]) return -1;
         for (int i = 0; i < count; i++) {
             if (state[i] == PENDING && preferred[i] == (byte) netIndex) return markBusy(i);
         }
-
-        // Do not strand chunks assigned to a network that has gone offline, been disabled, or failed.
-        for (int i = 0; i < count; i++) {
-            int assigned = preferred[i];
-            if (state[i] == PENDING && (assigned < 0 || assigned >= usable.length || !usable[assigned])) {
-                return markBusy(i);
-            }
-        }
-
-        // All available owners have claimed their own pending chunks. Let an active network help
-        // with the remaining work instead of leaving its workers idle.
-        boolean pendingForUsableOwner = false;
-        for (int i = 0; i < count; i++) {
-            int assigned = preferred[i];
-            if (state[i] == PENDING && assigned >= 0 && assigned < usable.length && usable[assigned]) {
-                pendingForUsableOwner = true;
-                break;
-            }
-        }
-        if (!pendingForUsableOwner) {
-            for (int i = 0; i < count; i++) if (state[i] == PENDING) return markBusy(i);
-        }
+        for (int i = 0; i < count; i++) if (state[i] == PENDING) return markBusy(i);
         return -1;
     }
 

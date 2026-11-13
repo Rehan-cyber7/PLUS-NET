@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { Engine, type Dl, type Net, type NetId } from './engine'
+import { Engine, type Dl, type Mode, type Net, type NetId } from './engine'
 
 export interface Sample {
   t: number
@@ -11,6 +11,7 @@ interface State {
   dls: Dl[] // newest first
   nets: Net[]
   limits: Partial<Record<NetId, number>>
+  mode: Mode
   names: Partial<Record<NetId, string>> // the user's own names for networks
   ready: boolean
 }
@@ -26,7 +27,7 @@ function loadNames(): State['names'] {
   }
 }
 
-let state: State = { dls: [], nets: [], limits: {}, names: loadNames(), ready: false }
+let state: State = { dls: [], nets: [], limits: {}, mode: 'together', names: loadNames(), ready: false }
 const subs = new Set<() => void>()
 const samples = new Map<string, Sample[]>()
 
@@ -63,6 +64,11 @@ export function rename(id: NetId, name: string): void {
   set({ names })
 }
 
+export function setMode(mode: Mode): void {
+  set({ mode })
+  void Engine.setMode({ mode })
+}
+
 export function setLimit(network: NetId, bytesPerSec: number): void {
   set({ limits: { ...state.limits, [network]: bytesPerSec } })
   void Engine.setLimit({ network, bytesPerSec })
@@ -85,7 +91,7 @@ export function init(): Promise<void> {
     ])
 
     const [n, l] = await Promise.all([Engine.networks(), Engine.list()])
-    set({ nets: n.networks, dls: l.downloads.sort(byNewest), limits: l.limits, ready: true })
+    set({ nets: n.networks, dls: l.downloads.sort(byNewest), limits: l.limits, mode: l.mode, ready: true })
   })().catch((error: unknown) => {
     initPromise = null
     throw error

@@ -15,6 +15,7 @@ public class PlusNetEnginePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setNetwork", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setLimit", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setMode", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "list", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openFile", returnType: CAPPluginReturnPromise)
     ]
@@ -85,8 +86,13 @@ public class PlusNetEnginePlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
+    @objc func setMode(_ call: CAPPluginCall) {
+        eng.setMode(together: call.getString("mode") == "together")
+        call.resolve()
+    }
+
     @objc func list(_ call: CAPPluginCall) {
-        call.resolve(["downloads": eng.list(), "limits": eng.limits()])
+        call.resolve(["downloads": eng.list(), "limits": eng.limits(), "mode": eng.together ? "together" : "backup"])
     }
 
     @objc func openFile(_ call: CAPPluginCall) {
