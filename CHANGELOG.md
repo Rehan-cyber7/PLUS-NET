@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3] - 2026-11-11
+
+- Remove the **Wi-Fi first** option added in 0.4.1. Wi-Fi and mobile data always download together; nothing can restrict a download to one network any more.
+- Fix: a download now includes mobile data even if it was not yet "connected" at the moment Start was tapped. Mobile data often takes a second or two to wake up while Wi-Fi is the main connection; before, a network that was not ready at that instant was left out of the download for good. Now every network that is not switched off is part of the download and joins as soon as it connects.
+- The new-download sheet always lists Wi-Fi and Mobile data, with "Not connected yet" when one is not ready.
+- Show the installed app version at the bottom of the Networks sheet.
+
 ## [0.4.2] - 2026-11-11
 
 - Fix: Wi-Fi and mobile data now both download at full speed until the file is finished. Previously each network was given a fixed half of the file and a network that finished its half sat idle while the other was still working (so a file ended up exactly half and half, and mobile data showed 0 B/s part-way through). Now any network that is free takes the next waiting part, so the faster network does more and the total speed is the sum of both.

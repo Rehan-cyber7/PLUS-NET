@@ -1,20 +1,21 @@
-# PlusNet v0.4.2
+# PlusNet v0.4.3
 
-Wi-Fi and mobile data now download together at full speed.
+Wi-Fi and mobile data always download together.
 
 ## What's changed
 
-- **Fixed:** a download is no longer cut into a fixed half for Wi-Fi and a fixed half for mobile data. Before, the network that finished its half first went idle (mobile data dropped to 0 B/s) while the other network was still working, so the total speed fell to one network. Now whichever network is free takes the next waiting part of the file: both stay busy until the end, the faster one carries more, and the total speed is the sum of both.
-- **Use both together** is the default again.
-- The optional **Wi-Fi first** mode from 0.4.1 is still under Networks (sliders icon, top right) for saving mobile data. It is off unless you choose it.
-- Everything else is unchanged.
+- **Removed** the optional "Wi-Fi first" mode from 0.4.1. There is no setting that limits a download to Wi-Fi any more.
+- **Fixed:** mobile data is no longer left out when it is not yet connected at the moment you tap Start. Every network you have not switched off is part of the download, and one that connects a moment later joins automatically.
+- The new-download sheet always lists Wi-Fi and Mobile data, and says "Not connected yet" when one is not ready.
+- The app version is shown at the bottom of Networks (sliders icon, top right), so you can check which build is installed.
+- The 0.4.2 scheduling fix is included: the faster network does more and neither sits idle while there is work left.
 
 ## Android build
 
-- App version: `0.4.2`
-- Android versionCode: `7`
+- App version: `0.4.3`
+- Android versionCode: `8`
 - Application ID: `app.plusnet.mobile`
-- Artifact: `PlusNet-0.4.2-debug.apk`
+- Artifact: `PlusNet-0.4.3-debug.apk`
 
 ## Upgrade note
 

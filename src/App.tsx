@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ClipboardPaste, Pause, Play, Plus, RotateCw, Settings2, Trash2, ExternalLink } from 'lucide-react'
-import { Engine, type Dl, type Mode, type NetId, type Probe } from './engine'
+import pkg from '../package.json'
+import { Engine, type Dl, type NetId, type Probe } from './engine'
 import { formatBytes, formatEta, formatSpeed, shares } from './format'
-import { init, netName, refreshNetworks, rename, setLimit, setMode, speedHistory, useStore } from './store'
+import { init, netName, refreshNetworks, rename, setLimit, speedHistory, useStore } from './store'
 import { BlockGrid, Chart, NetIcon, ProgressBar, ShareBar, Sheet, Switch, tone } from './components'
 
 type Tab = 'active' | 'done'
@@ -164,7 +165,10 @@ function AddSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
   const [busy, setBusy] = useState(false)
   const [off, setOff] = useState<NetId[]>([]) // networks switched off for this download
   const online = s.nets.filter((n) => n.online)
-  const picked = online.filter((n) => !off.includes(n.id))
+  // Wi-Fi and mobile data always show. Everything not switched off goes into the download, connected yet or not:
+  // mobile data often needs a second or two to wake up while on Wi-Fi, and a network that connects later joins by itself.
+  const rows = s.nets.filter((n) => n.online || n.id !== 'ethernet')
+  const picked = rows.filter((n) => !off.includes(n.id))
 
   async function check(): Promise<void> {
     const u = url.trim()
@@ -238,16 +242,16 @@ function AddSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
           </div>
           <div>
             <div className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Download over</div>
-            {online.map((n) => (
+            {rows.map((n) => (
               <div key={n.id} className="flex items-center gap-3 py-2">
                 <NetIcon id={n.id} size={18} />
-                <span className="flex-1 text-sm font-medium">{netName(s, n.id)}</span>
+                <div className="flex-1">
+                  <div className="text-sm font-medium">{netName(s, n.id)}</div>
+                  {!n.online && <div className="text-xs text-muted-foreground">Not connected yet. It joins the download as soon as it connects.</div>}
+                </div>
                 <Switch on={!off.includes(n.id)} label={netName(s, n.id)} color={tone(n.id).solid} onChange={(v) => setOff(v ? off.filter((x) => x !== n.id) : [...off, n.id])} />
               </div>
             ))}
-            {online.length >= 2 && s.mode === 'backup' && (
-              <p className="text-xs text-muted-foreground">Mobile data is only used if Wi-Fi isn't available. You can change this under Networks (top right).</p>
-            )}
             {online.length < 2 && (
               <p className="text-xs text-muted-foreground">Only one network is connected, so there's nothing to combine yet. Turn on mobile data while on Wi-Fi to add speed.</p>
             )}
@@ -349,31 +353,10 @@ function DetailSheet({ id, onClose }: { id: string; onClose: () => void }): Reac
 
 const LIMITS = [0, 1, 2, 5, 10, 25]
 
-const MODES: { id: Mode; title: string; hint: string }[] = [
-  { id: 'together', title: 'Use both together', hint: 'Wi-Fi and mobile data download at the same time. The faster one carries more, for the highest speed. Uses mobile data too.' },
-  { id: 'backup', title: 'Wi-Fi first', hint: "Saves mobile data: uses Wi-Fi, and switches to mobile data only if Wi-Fi isn't available." }
-]
-
 function NetworksSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
   const s = useStore()
   return (
     <Sheet title="Networks" onClose={onClose}>
-      <div className="mb-6">
-        <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">When Wi-Fi and mobile data are both on</div>
-        <div className="flex flex-col gap-1.5">
-          {MODES.map((m) => (
-            <button
-              key={m.id}
-              aria-pressed={s.mode === m.id}
-              onClick={() => setMode(m.id)}
-              className={`rounded-xl px-3.5 py-2.5 text-left ${s.mode === m.id ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
-            >
-              <div className="text-sm font-semibold">{m.title}</div>
-              <div className="text-xs opacity-80">{m.hint}</div>
-            </button>
-          ))}
-        </div>
-      </div>
       <div className="space-y-5">
         {s.nets.filter((n) => n.online || n.id !== 'ethernet').map((n) => (
           <div key={n.id}>
@@ -408,6 +391,7 @@ function NetworksSheet({ onClose }: { onClose: () => void }): React.JSX.Element 
       <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
         A speed cap applies to everything downloaded over that network. A second network only adds speed when it reaches the internet by its own route, as Wi-Fi and mobile data do.
       </p>
+      <p className="mt-4 text-center font-mono text-[11px] text-[var(--text-tertiary)]">PlusNet v{pkg.version}</p>
     </Sheet>
   )
 }

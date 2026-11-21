@@ -57,7 +57,6 @@ final class Engine {
     private long lastTick = System.nanoTime();
     private boolean visible = true, serviceUp;
     private volatile int active;
-    private volatile boolean together; // true (default): every connected network at once. false: Wi-Fi first, mobile data only as a backup
 
     private Engine(Context ctx) {
         this.ctx = ctx;
@@ -69,7 +68,6 @@ final class Engine {
             l.bytesPerSec = prefs.getLong("limit." + id, 0);
             limiters.put(id, l);
         }
-        together = prefs.getBoolean("together", true);
         nets = new Nets(ctx, this::netsChanged);
         loadHistory();
         nets.request();
@@ -82,15 +80,6 @@ final class Engine {
     // ---- what the UI asks for ----
 
     Limiter limiter(String netId) { return limiters.get(netId); }
-
-    boolean together() { return together; }
-
-    String mode() { return together ? "together" : "backup"; }
-
-    void setMode(boolean together) {
-        this.together = together;
-        prefs.edit().putBoolean("together", together).apply();
-    }
 
     void setLimit(String netId, long bytesPerSec) {
         Limiter l = limiters.get(netId);

@@ -44,9 +44,6 @@ export interface Probe {
   ranges: boolean
 }
 
-/** backup: Wi-Fi first, mobile data only if Wi-Fi isn't available. together: every connected network at once. */
-export type Mode = 'backup' | 'together'
-
 export interface EngineApi {
   networks(): Promise<{ networks: Net[] }>
   probe(o: { url: string }): Promise<Probe>
@@ -57,8 +54,7 @@ export interface EngineApi {
   setNetwork(o: { id: string; network: NetId; enabled: boolean }): Promise<void>
   /** 0 removes the cap. Applies to every download on that network. */
   setLimit(o: { network: NetId; bytesPerSec: number }): Promise<void>
-  setMode(o: { mode: Mode }): Promise<void>
-  list(): Promise<{ downloads: Dl[]; limits: Partial<Record<NetId, number>>; mode: Mode }>
+  list(): Promise<{ downloads: Dl[]; limits: Partial<Record<NetId, number>> }>
   openFile(o: { id: string }): Promise<void>
   addListener(e: 'update', f: (d: Dl) => void): Promise<PluginListenerHandle>
   addListener(e: 'removed', f: (d: { id: string }) => void): Promise<PluginListenerHandle>
