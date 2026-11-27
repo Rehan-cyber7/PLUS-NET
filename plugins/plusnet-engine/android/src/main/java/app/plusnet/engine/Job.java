@@ -1,13 +1,9 @@
 package app.plusnet.engine;
 
 import android.content.ContentResolver;
-import android.content.ContentValues;
 import android.database.Cursor;
 import android.net.Uri;
-import android.os.Build;
-import android.os.Environment;
 import android.os.ParcelFileDescriptor;
-import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.system.ErrnoException;
 import android.system.Os;
@@ -35,7 +31,7 @@ import org.json.JSONObject;
  * have come or gone, and keeps a few streams open on each usable one. Every stream takes the next
  * waiting chunk, so a faster network ends up doing more of the file.
  */
-final class Job {
+final class Job extends Download {
     private static final int STREAMS = 4; // per network
     private static final int CELLS = 120;
     private static final int MAX_FAILS = 6;
@@ -84,18 +80,10 @@ final class Job {
         }
     }
 
-    final Engine eng;
-    final String id;
     final String url;
-    volatile String status = "queued"; // queued | downloading | paused | completed | error
-    volatile String error;
-    volatile String fileName;
     volatile String finalUrl;
     volatile long total = -1;
     volatile boolean ranges;
-    long createdAt = System.currentTimeMillis();
-    long finishedAt;
-    Uri uri;
     final List<Stat> nets = new ArrayList<>();
 
     private volatile ChunkMap map; // null while unprobed, and when the server can't do ranges
@@ -109,8 +97,7 @@ final class Job {
     private volatile Run run;
 
     Job(Engine eng, String id, String url, String name, List<String> use) {
-        this.eng = eng;
-        this.id = id;
+        super(eng, id);
         this.url = url;
         this.fileName = name == null || name.trim().isEmpty() ? null : Probe.clean(name);
         for (int i = 0; i < Nets.IDS.length; i++) {
@@ -221,9 +208,7 @@ final class Job {
             r.stop();
             try { if (r.main != null) r.main.join(3000); } catch (InterruptedException ignored) { }
         }
-        if (uri != null && (!status.equals("completed") || deleteFile)) {
-            try { eng.ctx.getContentResolver().delete(uri, null, null); } catch (RuntimeException ignored) { }
-        }
+        if (uri != null && (!status.equals("completed") || deleteFile)) eng.dest().delete(uri);
     }
 
     /** Called by the engine when a slot is free. */
@@ -268,6 +253,7 @@ final class Job {
         Probe firstRange = null;
         IOException last = null;
         List<Integer> rangeNetworks = new ArrayList<>();
+        List<Integer> probed = new ArrayList<>(); // networks that were connected now and so were really asked
         int attempted = 0;
 
         // Probe each selected transport independently from the ORIGINAL URL. Many download hosts
@@ -276,6 +262,7 @@ final class Job {
         for (Stat s : nets) {
             if (!s.enabled || !eng.nets.online(s.id)) continue;
             attempted++;
+            probed.add(s.idx);
             try {
                 Probe p = Probe.run(eng.nets, s.id, url);
                 s.error = null;
@@ -305,10 +292,12 @@ final class Job {
         }
 
         if (firstRange != null) {
-            // Only transports that independently returned valid byte ranges for the same length
-            // may participate in a split download. A 200 response or a 403 route is not eligible.
+            // A network that was asked, and did not return valid byte ranges for the same length, may not
+            // take part. One that was NOT asked because it was not connected yet (Wi-Fi switched on in the
+            // middle of a download, mobile data still waking up) is left alone: it joins when it connects,
+            // and every chunk it fetches is checked against the file's size (see fetch()).
             for (Stat s : nets) {
-                if (s.enabled && !rangeNetworks.contains(s.idx) && !s.failed) {
+                if (s.enabled && probed.contains(s.idx) && !rangeNetworks.contains(s.idx) && !s.failed) {
                     s.failed = true;
                     s.fails.set(MAX_FAILS);
                     s.error = "This network does not support byte-range downloads for this link";
@@ -417,6 +406,7 @@ final class Job {
             if (resp.code != 206) {
                 throw new IOException(resp.code == 200 ? "The server stopped allowing range requests" : Probe.describe(resp.code));
             }
+            checkSize(resp.conn.getHeaderField("Content-Range"));
             try (InputStream in = resp.conn.getInputStream()) {
                 copy(r, s, in, from, to - from + 1, c);
             }
@@ -424,6 +414,18 @@ final class Job {
             r.conns.remove(resp.conn);
             resp.conn.disconnect();
         }
+    }
+
+    /** "bytes 0-99/12345": the total must be this file's. A different one means another version of the file. */
+    private void checkSize(String contentRange) throws IOException {
+        if (contentRange == null) return;
+        int slash = contentRange.lastIndexOf('/');
+        if (slash < 0) return;
+        String t = contentRange.substring(slash + 1).trim();
+        if (t.equals("*")) return;
+        try {
+            if (Long.parseLong(t) != total) throw new IOException("This network returned a different file size; it cannot safely share this download");
+        } catch (NumberFormatException ignored) { }
     }
 
     private void single(Run r, Stat s) {
@@ -478,9 +480,7 @@ final class Job {
         if (removed || run != r) return; // removed, or a newer run has taken over
         if (complete()) {
             try {
-                ContentValues v = new ContentValues();
-                v.put(MediaStore.MediaColumns.IS_PENDING, 0);
-                eng.ctx.getContentResolver().update(uri, v, null, null);
+                eng.dest().seal(uri);
                 finalBytes = map != null ? map.bytes() : plain.get();
                 if (total < 0) total = finalBytes;
                 finishedAt = System.currentTimeMillis();
@@ -505,15 +505,8 @@ final class Job {
     private void openFile() throws IOException {
         ContentResolver cr = eng.ctx.getContentResolver();
         if (uri == null) {
-            if (Build.VERSION.SDK_INT < 29) throw new IOException("PlusNet needs Android 10 or newer");
-            ContentValues v = new ContentValues();
-            v.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-            v.put(MediaStore.MediaColumns.MIME_TYPE, mime(fileName));
-            v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/PlusNet");
-            v.put(MediaStore.MediaColumns.IS_PENDING, 1);
-            uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
-            if (uri == null) throw new IOException("Couldn't create the file");
-            String shown = displayName(cr, uri); // Android renames a clash: "name (1).zip"
+            uri = eng.dest().create("", fileName, mime(fileName)); // the user's chosen folder, or Downloads/PlusNet
+            String shown = displayName(cr, uri); // a clash is renamed: "name (1).zip"
             if (shown != null) fileName = shown;
         }
         pfd = cr.openFileDescriptor(uri, "rw"); // "rw" keeps what is there; "rwt" would empty it

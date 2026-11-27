@@ -23,3 +23,19 @@ export function shares(values: number[]): number[] {
   const sum = values.reduce((a, b) => a + b, 0)
   return values.map((v) => (sum > 0 ? Math.round((v / sum) * 100) : 0))
 }
+
+/** The "dn=" display name of a magnet link; '' if it has none. */
+export function magnetName(magnet: string): string {
+  const q = magnet.indexOf('?')
+  if (q < 0) return ''
+  for (const kv of magnet.slice(q + 1).split('&')) {
+    if (kv.startsWith('dn=')) {
+      try {
+        return decodeURIComponent(kv.slice(3).replace(/\+/g, ' '))
+      } catch {
+        return ''
+      }
+    }
+  }
+  return ''
+}

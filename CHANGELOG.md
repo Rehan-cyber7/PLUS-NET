@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0] - 2026-11-11
+
+- Fix: a network that connects after a download has started (Wi-Fi switched on in the middle of a download that began on mobile data, or the other way round) now joins it. Before, a network that was not connected at the moment the download started was marked as "does not support byte ranges" for good and never used. Every piece such a late network fetches is also checked to be the same size as the file.
+- Add torrent and magnet link support (Android). Paste a magnet link or a link to a .torrent file in New download. Torrents download over the phone's main connection (they cannot be combined across Wi-Fi and mobile data), are saved to the download location when finished, and stop sharing once done.
+- Add a Settings sheet (the sliders icon): Appearance (System, Light, Dark) and Download location (the Downloads folder by default, or any folder you choose). The existing network names and speed limits are in the same sheet.
+- Show why "Open" failed (for example, which folder a multi-file torrent is in).
+
 ## [0.4.3] - 2026-11-11
 
 - Remove the **Wi-Fi first** option added in 0.4.1. Wi-Fi and mobile data always download together; nothing can restrict a download to one network any more.

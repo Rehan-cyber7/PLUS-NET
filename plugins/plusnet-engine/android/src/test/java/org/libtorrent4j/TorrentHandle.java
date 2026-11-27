@@ -1,0 +1,1 @@
+package org.libtorrent4j; public class TorrentHandle { public boolean paused; public boolean isValid() { return true; } public TorrentStatus status() { return new TorrentStatus(); } public void pause() { paused = true; } public void resume() { paused = false; } }

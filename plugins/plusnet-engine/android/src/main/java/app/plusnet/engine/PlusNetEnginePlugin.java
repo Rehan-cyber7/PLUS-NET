@@ -1,13 +1,18 @@
 package app.plusnet.engine;
 
 import android.Manifest;
+import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
+import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.util.ArrayList;
 import java.util.List;
@@ -95,14 +100,14 @@ public class PlusNetEnginePlugin extends Plugin {
 
     @PluginMethod
     public void pause(PluginCall call) {
-        Job j = eng.job(call.getString("id", ""));
+        Download j = eng.job(call.getString("id", ""));
         if (j != null) j.pause();
         call.resolve();
     }
 
     @PluginMethod
     public void resume(PluginCall call) {
-        Job j = eng.job(call.getString("id", ""));
+        Download j = eng.job(call.getString("id", ""));
         if (j != null) j.resume();
         call.resolve();
     }
@@ -119,7 +124,7 @@ public class PlusNetEnginePlugin extends Plugin {
 
     @PluginMethod
     public void setNetwork(PluginCall call) {
-        Job j = eng.job(call.getString("id", ""));
+        Download j = eng.job(call.getString("id", ""));
         if (j != null) j.setNetwork(call.getString("network", ""), Boolean.TRUE.equals(call.getBoolean("enabled", false)));
         call.resolve();
     }
@@ -128,6 +133,74 @@ public class PlusNetEnginePlugin extends Plugin {
     public void setLimit(PluginCall call) {
         eng.setLimit(call.getString("network", ""), (long) call.getDouble("bytesPerSec", 0.0).doubleValue());
         call.resolve();
+    }
+
+    @PluginMethod
+    public void probeTorrent(PluginCall call) {
+        final String url = call.getString("url");
+        if (url == null) { call.reject("Missing link"); return; }
+        eng.pool.execute(() -> {
+            try {
+                call.resolve(js(eng.probeTorrent(url)));
+            } catch (Exception e) {
+                call.reject(Probe.message(e));
+            }
+        });
+    }
+
+    @PluginMethod
+    public void startTorrent(PluginCall call) {
+        String source = call.getString("source");
+        if (source == null) { call.reject("Missing link"); return; }
+        if (!Torrents.available()) { call.reject("The torrent engine is not part of this build"); return; }
+        JSObject o = new JSObject();
+        o.put("id", eng.startTorrent(source, call.getString("fileName")));
+        call.resolve(o);
+    }
+
+    @PluginMethod
+    public void getSettings(PluginCall call) {
+        try {
+            call.resolve(js(eng.settings()));
+        } catch (JSONException e) {
+            call.reject(Probe.message(e));
+        }
+    }
+
+    /** Opens Android's folder picker; the chosen folder is where new downloads are saved from then on. */
+    @PluginMethod
+    public void pickFolder(PluginCall call) {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        startActivityForResult(call, pick, "folderPicked");
+    }
+
+    @ActivityCallback
+    private void folderPicked(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        try {
+            Intent data = result.getData();
+            if (result.getResultCode() == Activity.RESULT_OK && data != null && data.getData() != null) {
+                Uri tree = data.getData();
+                getContext().getContentResolver().takePersistableUriPermission(
+                    tree, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                eng.dest().choose(tree);
+            }
+            call.resolve(js(eng.settings())); // cancelled: unchanged
+        } catch (Exception e) {
+            call.reject(Probe.message(e));
+        }
+    }
+
+    @PluginMethod
+    public void resetFolder(PluginCall call) {
+        try {
+            eng.dest().reset();
+            call.resolve(js(eng.settings()));
+        } catch (JSONException e) {
+            call.reject(Probe.message(e));
+        }
     }
 
     @PluginMethod

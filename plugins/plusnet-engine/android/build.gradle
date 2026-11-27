@@ -46,4 +46,8 @@ dependencies {
     implementation project(':capacitor-android')
     // Capacitor's Plugin#getActivity() exposes androidx.appcompat.app.AppCompatActivity.
     implementation 'androidx.appcompat:appcompat:1.7.0'
+    // BitTorrent (libtorrent4j, MIT). The per-CPU artifacts carry the native code.
+    implementation 'org.libtorrent4j:libtorrent4j:2.1.0-37'
+    implementation 'org.libtorrent4j:libtorrent4j-android-arm64:2.1.0-37'
+    implementation 'org.libtorrent4j:libtorrent4j-android-arm:2.1.0-37'
 }

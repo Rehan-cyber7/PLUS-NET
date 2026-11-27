@@ -1,5 +1,5 @@
 import { WebPlugin } from '@capacitor/core'
-import type { Dl, EngineApi, Net, NetId, Probe } from './engine'
+import type { Dl, EngineApi, Net, NetId, Probe, Settings, TorrentProbe } from './engine'
 
 const NETS: Net[] = [
   { id: 'wifi', name: 'Wi-Fi', online: true },
@@ -9,9 +9,10 @@ const RATE: Record<string, number> = { wifi: 6e6, cellular: 2e6 }
 const BLOCKS = 120
 
 /** Browser stand-in for the native engines: fake downloads at a fixed speed per network. */
-export class MockEngine extends WebPlugin implements Pick<EngineApi, 'networks' | 'probe' | 'start' | 'pause' | 'resume' | 'remove' | 'setNetwork' | 'setLimit' | 'list' | 'openFile'> {
+export class MockEngine extends WebPlugin implements Pick<EngineApi, 'networks' | 'probe' | 'start' | 'pause' | 'resume' | 'remove' | 'setNetwork' | 'setLimit' | 'list' | 'probeTorrent' | 'startTorrent' | 'getSettings' | 'pickFolder' | 'resetFolder' | 'openFile'> {
   private dls = new Map<string, Dl>()
   private limits: Partial<Record<NetId, number>> = {}
+  private folder: string | null = null
 
   constructor() {
     super()
@@ -79,6 +80,33 @@ export class MockEngine extends WebPlugin implements Pick<EngineApi, 'networks' 
   }
   async setLimit({ network, bytesPerSec }: { network: NetId; bytesPerSec: number }): Promise<void> {
     this.limits[network] = bytesPerSec
+  }
+  async probeTorrent(): Promise<TorrentProbe> {
+    return { name: 'Sample torrent', total: 700_000_000, files: 3 }
+  }
+  async startTorrent(o: { source: string; fileName?: string }): Promise<{ id: string }> {
+    const id = Math.random().toString(36).slice(2)
+    const d: Dl = {
+      id, url: o.source, fileName: o.fileName || 'Torrent', status: 'completed', total: 700_000_000, done: 700_000_000, speed: 0,
+      ranges: true, error: null, cells: '', createdAt: Date.now(), finishedAt: Date.now(), nets: [], kind: 'torrent', peers: 0, note: null
+    }
+    this.dls.set(id, d)
+    this.notifyListeners('update', { ...d })
+    return { id }
+  }
+  private settings(): Settings {
+    return { folderLabel: this.folder ?? 'Downloads/PlusNet', customFolder: this.folder !== null, canPickFolder: true, torrents: true }
+  }
+  async getSettings(): Promise<Settings> {
+    return this.settings()
+  }
+  async pickFolder(): Promise<Settings> {
+    this.folder = 'Movies'
+    return this.settings()
+  }
+  async resetFolder(): Promise<Settings> {
+    this.folder = null
+    return this.settings()
   }
   async list(): Promise<{ downloads: Dl[]; limits: Partial<Record<NetId, number>> }> {
     return { downloads: [...this.dls.values()], limits: this.limits }

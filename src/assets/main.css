@@ -142,8 +142,10 @@
   --radius-xl: calc(var(--radius) * 1.4);
 }
 
+/* Dark colours. Used when the phone is dark and the app is on "System", and always when the app is set to "Dark". */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
     --hero-bg: linear-gradient(180deg, #202325 0%, #1b1e20 100%);
     --hero-border: #2b2f33;
     /* Graphite instrument-panel background — exact hex values from the "PlusNet v2" design doc. */
@@ -220,6 +222,89 @@
 
     --node-accent: #f7f4ef;
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --hero-bg: linear-gradient(180deg, #202325 0%, #1b1e20 100%);
+  --hero-border: #2b2f33;
+  /* Graphite instrument-panel background — exact hex values from the "PlusNet v2" design doc. */
+  --bg: #1b1e20;
+  --bg-secondary: #202325;
+  --bg-tertiary: #202325;
+  --input-bg: #242729;
+  --track-bg: #262a2d;
+
+  --text: #eae7e2;
+  --text-secondary: #a9adb2;
+  --text-tertiary: #8d9196;
+
+  --border: #2b2f33;
+  --border-subtle: #23262a;
+  --border-strong: #33383c;
+  --footer-border: #2b2f33;
+
+  --icon-muted: #33383c;
+  --icon-muted-strong: #3a3f44;
+  --scrollbar-thumb: #3a3f44;
+
+  --checkbox-shadow: rgba(0, 0, 0, 0.4);
+  --checkbox-inset-shadow: rgba(0, 0, 0, 0.3);
+
+  --color-wifi: #4ea89a;
+  --color-wifi-bg: #22312e;
+  --color-wifi-border: #3a5450;
+  --color-wifi-text: #7fc9bb;
+  --color-wifi-onsolid: #10201d;
+
+  --color-usb: #d8a44c;
+  --color-usb-bg: #33291a;
+  --color-usb-border: #54421f;
+  --color-usb-text: #e8bb6d;
+  --color-usb-onsolid: #221806;
+
+  --color-ethernet: #7e93bd;
+  --color-ethernet-bg: #232a38;
+  --color-ethernet-border: #3a4660;
+  --color-ethernet-text: #a7b8db;
+  --color-ethernet-onsolid: #141a26;
+
+  --color-neutral: #8d9196;
+  --color-neutral-bg: #26292c;
+  --color-neutral-border: #3a3f44;
+  --color-neutral-text: #a9adb2;
+  --color-neutral-onsolid: #16181a;
+
+  --swatch-teal: #4ea89a;
+  --swatch-teal-onsolid: #10201d;
+  --swatch-amber: #d8a44c;
+  --swatch-amber-onsolid: #221806;
+  --swatch-steel: #7e93bd;
+  --swatch-steel-onsolid: #141a26;
+  --swatch-rose: #c97b7b;
+  --swatch-rose-onsolid: #210f0f;
+  --swatch-violet: #9c8fd6;
+  --swatch-violet-onsolid: #17131f;
+  --swatch-lime: #a3c66a;
+  --swatch-lime-onsolid: #161f0d;
+  --swatch-cyan: #6db8c9;
+  --swatch-cyan-onsolid: #0d1a1e;
+  --swatch-coral: #d99168;
+  --swatch-coral-onsolid: #241209;
+
+  --color-accent: #d8a44c;
+  --color-accent-onsolid: #1b1408;
+  --color-success: #4ea89a;
+
+  --color-danger: #eda3a3;
+  --color-danger-bg: #2c1c1c;
+  --color-danger-border: #4a2a2a;
+
+  --node-accent: #f7f4ef;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
 }
 
 /* Layered, not plain global CSS, so Tailwind utility classes still win over these resets.

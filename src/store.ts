@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
-import { Engine, type Dl, type Net, type NetId } from './engine'
+import { Engine, type Dl, type Net, type NetId, type Settings } from './engine'
+import { applyTheme, getTheme, saveTheme, type Theme } from './theme'
 
 export interface Sample {
   t: number
@@ -11,6 +12,8 @@ interface State {
   dls: Dl[] // newest first
   nets: Net[]
   limits: Partial<Record<NetId, number>>
+  settings: Settings
+  theme: Theme
   names: Partial<Record<NetId, string>> // the user's own names for networks
   ready: boolean
 }
@@ -26,7 +29,10 @@ function loadNames(): State['names'] {
   }
 }
 
-let state: State = { dls: [], nets: [], limits: {}, names: loadNames(), ready: false }
+// What a device that cannot answer (iOS has no folder picker and no torrents yet) is taken to have.
+const DEFAULT_SETTINGS: Settings = { folderLabel: 'Files › PlusNet', customFolder: false, canPickFolder: false, torrents: false }
+
+let state: State = { dls: [], nets: [], limits: {}, settings: DEFAULT_SETTINGS, theme: getTheme(), names: loadNames(), ready: false }
 const subs = new Set<() => void>()
 const samples = new Map<string, Sample[]>()
 
@@ -63,6 +69,21 @@ export function rename(id: NetId, name: string): void {
   set({ names })
 }
 
+export function setTheme(theme: Theme): void {
+  saveTheme(theme)
+  applyTheme(theme)
+  set({ theme })
+}
+
+/** Android's folder picker; new downloads go to the chosen folder from then on. */
+export async function chooseFolder(): Promise<void> {
+  set({ settings: await Engine.pickFolder() })
+}
+
+export async function useDefaultFolder(): Promise<void> {
+  set({ settings: await Engine.resetFolder() })
+}
+
 export function setLimit(network: NetId, bytesPerSec: number): void {
   set({ limits: { ...state.limits, [network]: bytesPerSec } })
   void Engine.setLimit({ network, bytesPerSec })
@@ -86,6 +107,8 @@ export function init(): Promise<void> {
 
     const [n, l] = await Promise.all([Engine.networks(), Engine.list()])
     set({ nets: n.networks, dls: l.downloads.sort(byNewest), limits: l.limits, ready: true })
+    // where downloads are saved and what this build can do; a device that has no such settings (iOS) keeps the defaults
+    void Engine.getSettings().then((settings) => set({ settings })).catch(() => undefined)
   })().catch((error: unknown) => {
     initPromise = null
     throw error

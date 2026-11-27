@@ -1,21 +1,27 @@
-# PlusNet v0.4.3
+# PlusNet v0.5.0
 
-Wi-Fi and mobile data always download together.
+Late-joining networks, torrents, and settings.
 
 ## What's changed
 
-- **Removed** the optional "Wi-Fi first" mode from 0.4.1. There is no setting that limits a download to Wi-Fi any more.
-- **Fixed:** mobile data is no longer left out when it is not yet connected at the moment you tap Start. Every network you have not switched off is part of the download, and one that connects a moment later joins automatically.
-- The new-download sheet always lists Wi-Fi and Mobile data, and says "Not connected yet" when one is not ready.
-- The app version is shown at the bottom of Networks (sliders icon, top right), so you can check which build is installed.
-- The 0.4.2 scheduling fix is included: the faster network does more and neither sits idle while there is work left.
+- **Fixed:** when Wi-Fi (or mobile data) connected in the middle of a download that started without it, it was never used. Such a network was wrongly marked as unable to do byte-range downloads and left out for good. It now joins as soon as it connects, and each piece it fetches is checked to be the same size as the file.
+- **New: torrents and magnet links (Android).** Paste a magnet link or a link to a `.torrent` file in New download. Torrents use the phone's main connection (Wi-Fi when connected); they cannot be combined across Wi-Fi and mobile data. Files are saved to your download location when finished, and sharing stops then so it does not keep using your data.
+- **New: Settings** (sliders icon, top right): Appearance (System, Light or Dark) and Download location (the Downloads folder by default, or any folder you pick). Network names and speed limits are in the same sheet. A new location applies to new downloads.
+- "Open" now says why it could not open something, for example which folder a multi-file torrent is in.
 
 ## Android build
 
-- App version: `0.4.3`
-- Android versionCode: `8`
+- App version: `0.5.0`
+- Android versionCode: `9`
 - Application ID: `app.plusnet.mobile`
-- Artifact: `PlusNet-0.4.3-debug.apk`
+- Artifact: `PlusNet-0.5.0-debug.apk`
+
+## Torrent notes
+
+- The torrent engine (libtorrent4j) is included for 64-bit and 32-bit ARM phones. The APK is larger than before.
+- A magnet link has to be found on the network first; this can take up to 2 minutes, and fails if no one is sharing it.
+- Torrents are saved in the app's own storage while downloading and moved to the download location when done, so a large torrent needs free space for itself plus, briefly, for the file being moved.
+- Torrents are not resumed after the app is closed.
 
 ## Upgrade note
 
@@ -23,6 +29,6 @@ The application ID is unchanged, so this installs as an update only if both APKs
 
 ## Network compatibility
 
-Splitting requires a server that supports HTTP byte ranges and accepts requests over each selected network. Server, CDN and carrier restrictions cannot be bypassed by the app.
+Splitting a normal download requires a server that supports HTTP byte ranges and accepts requests over each selected network. Server, CDN and carrier restrictions cannot be bypassed by the app.
 
 This is a debug/testing APK, not a production-signed Google Play release.

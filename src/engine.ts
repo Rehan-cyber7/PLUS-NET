@@ -35,6 +35,11 @@ export interface Dl {
   cells: string
   createdAt: number
   finishedAt: number
+  /** 'torrent' for magnet links and .torrent files; anything else is a normal download. */
+  kind?: 'http' | 'torrent'
+  peers?: number
+  /** What it is doing when that is not a transfer: looking for a torrent, saving files. */
+  note?: string | null
 }
 
 export interface Probe {
@@ -42,6 +47,23 @@ export interface Probe {
   fileName: string
   total: number
   ranges: boolean
+}
+
+export interface Settings {
+  /** Where new downloads are saved, as a name to show. */
+  folderLabel: string
+  customFolder: boolean
+  /** Android lets the user pick the folder; iOS keeps downloads in the app's own Files folder. */
+  canPickFolder: boolean
+  /** This build can download torrents and magnet links. */
+  torrents: boolean
+}
+
+export interface TorrentProbe {
+  name: string
+  /** -1 when not known yet (a magnet link only says once it has found the torrent). */
+  total: number
+  files: number
 }
 
 export interface EngineApi {
@@ -54,6 +76,11 @@ export interface EngineApi {
   setNetwork(o: { id: string; network: NetId; enabled: boolean }): Promise<void>
   /** 0 removes the cap. Applies to every download on that network. */
   setLimit(o: { network: NetId; bytesPerSec: number }): Promise<void>
+  probeTorrent(o: { url: string }): Promise<TorrentProbe>
+  startTorrent(o: { source: string; fileName?: string }): Promise<{ id: string }>
+  getSettings(): Promise<Settings>
+  pickFolder(): Promise<Settings>
+  resetFolder(): Promise<Settings>
   list(): Promise<{ downloads: Dl[]; limits: Partial<Record<NetId, number>> }>
   openFile(o: { id: string }): Promise<void>
   addListener(e: 'update', f: (d: Dl) => void): Promise<PluginListenerHandle>

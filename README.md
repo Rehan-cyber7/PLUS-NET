@@ -1,9 +1,9 @@
 # PlusNet
 
-**PlusNet is an Android download manager that can split a supported file download across Wi-Fi and mobile data, at full speed on both at once.** It combines a React + TypeScript interface with a native Capacitor plugin that routes individual HTTP range requests over selected Android networks.
+**PlusNet is an Android download manager that can split a supported file download across Wi-Fi and mobile data, at full speed on both at once.** It also downloads torrents and magnet links (over the phone's main connection), and has a Settings sheet for light/dark appearance and the download folder. It combines a React + TypeScript interface with a native Capacitor plugin that routes individual HTTP range requests over selected Android networks.
 
-> **App version:** `0.4.3`  
-> **Android versionCode:** `8`  
+> **App version:** `0.5.0`  
+> **Android versionCode:** `9`  
 > **Release tag:** `v0.4.0`  
 > **Android application ID:** `app.plusnet.mobile`
 

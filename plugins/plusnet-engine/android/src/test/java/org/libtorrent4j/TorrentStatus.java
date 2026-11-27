@@ -1,0 +1,1 @@
+package org.libtorrent4j; public class TorrentStatus { public long totalDone() { return 500L; } public int downloadRate() { return 100; } public int numPeers() { return 7; } public boolean isFinished() { return false; } public float progress() { return 0.04f; } }

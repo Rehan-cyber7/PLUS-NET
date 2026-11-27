@@ -49,11 +49,12 @@ final class Engine {
     final ExecutorService pool = Executors.newCachedThreadPool();
     volatile Sink sink;
 
-    private final Map<String, Job> jobs = Collections.synchronizedMap(new LinkedHashMap<>());
+    private final Map<String, Download> jobs = Collections.synchronizedMap(new LinkedHashMap<>());
     private final Map<String, Limiter> limiters = new ConcurrentHashMap<>();
     private final SharedPreferences prefs;
     private final File historyFile;
     private final PowerManager.WakeLock wake;
+    private final Dest dest;
     private long lastTick = System.nanoTime();
     private boolean visible = true, serviceUp;
     private volatile int active;
@@ -68,6 +69,7 @@ final class Engine {
             l.bytesPerSec = prefs.getLong("limit." + id, 0);
             limiters.put(id, l);
         }
+        dest = new Dest(ctx, prefs);
         nets = new Nets(ctx, this::netsChanged);
         loadHistory();
         nets.request();
@@ -132,16 +134,59 @@ final class Engine {
         return j.id;
     }
 
-    Job job(String id) { return jobs.get(id); }
+    Download job(String id) { return jobs.get(id); }
+
+    Dest dest() { return dest; }
+
+    /** What the Settings screen shows and which features this build has. */
+    JSONObject settings() throws JSONException {
+        return new JSONObject().put("folderLabel", dest.label()).put("customFolder", dest.custom())
+            .put("canPickFolder", true).put("torrents", Torrents.available());
+    }
+
+    String startTorrent(String source, String name) {
+        TorrentJob j = new TorrentJob(this, UUID.randomUUID().toString(), source, name);
+        jobs.put(j.id, j);
+        changed(j);
+        return j.id;
+    }
+
+    /** What a link to a .torrent file contains, for the new-download sheet. */
+    JSONObject probeTorrent(String url) throws IOException, JSONException {
+        Object ti = Torrents.info(fetchTorrentFile(url));
+        return new JSONObject().put("name", String.valueOf(Lt.call(ti, "name")))
+            .put("total", Lt.num(Lt.call(ti, "totalSize"))).put("files", Lt.num(Lt.call(ti, "numFiles")));
+    }
+
+    byte[] fetchTorrentFile(String url) throws IOException {
+        String via = null;
+        for (String id : Nets.IDS) if (nets.online(id)) { via = id; break; }
+        Nets.Resp r = nets.open(via, url, null);
+        try {
+            if (r.code != 200) throw new IOException(Probe.describe(r.code));
+            try (java.io.InputStream in = r.conn.getInputStream()) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[16 * 1024];
+                int n;
+                while ((n = in.read(buf)) >= 0) {
+                    out.write(buf, 0, n);
+                    if (out.size() > 8 << 20) throw new IOException("That is too big to be a .torrent file");
+                }
+                return out.toByteArray();
+            }
+        } finally {
+            r.conn.disconnect();
+        }
+    }
 
     JSONArray list() {
         JSONArray a = new JSONArray();
-        for (Job j : snapshot()) a.put(j.snap());
+        for (Download j : snapshot()) a.put(j.snap());
         return a;
     }
 
     void remove(String id, boolean deleteFile) {
-        Job j = jobs.remove(id);
+        Download j = jobs.remove(id);
         if (j == null) return;
         j.discard(deleteFile);
         saveHistory();
@@ -151,8 +196,13 @@ final class Engine {
     }
 
     void open(String id) throws IOException {
-        Job j = jobs.get(id);
-        if (j == null || j.uri == null) throw new IOException("The file is gone");
+        Download j = jobs.get(id);
+        if (j == null) throw new IOException("The file is gone");
+        if (j.uri == null) {
+            throw new IOException(j instanceof TorrentJob
+                ? "This torrent has several files. Find them in " + dest.label() + "/" + j.fileName
+                : "The file is gone");
+        }
         Intent view = new Intent(Intent.ACTION_VIEW)
             .setDataAndType(j.uri, Job.mime(j.fileName))
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -171,12 +221,12 @@ final class Engine {
 
     // ---- called by jobs ----
 
-    void emit(Job j) {
+    void emit(Download j) {
         Sink s = sink;
         if (s != null) s.update(j.snap());
     }
 
-    void changed(Job j) {
+    void changed(Download j) {
         emit(j);
         schedule();
     }
@@ -188,15 +238,15 @@ final class Engine {
 
     // ---- queue, ticker, notification ----
 
-    private List<Job> snapshot() {
+    private List<Download> snapshot() {
         synchronized (jobs) { return new ArrayList<>(jobs.values()); }
     }
 
     private synchronized void schedule() {
-        List<Job> all = snapshot();
+        List<Download> all = snapshot();
         int running = 0;
-        for (Job j : all) if (j.status.equals("downloading")) running++;
-        for (Job j : all) {
+        for (Download j : all) if (j.status.equals("downloading")) running++;
+        for (Download j : all) {
             if (running < MAX_ACTIVE && j.status.equals("queued")) {
                 j.begin();
                 running++;
@@ -217,13 +267,16 @@ final class Engine {
         lastTick = now;
         int running = 0;
         long speed = 0;
-        for (Job j : snapshot()) {
+        for (Download j : snapshot()) {
             if (!j.status.equals("downloading")) continue;
             j.sample(dt);
             emit(j);
             running++;
             speed += j.speed();
         }
+        boolean torrenting = false;
+        for (Download j : snapshot()) if (j instanceof TorrentJob && j.status.equals("downloading")) torrenting = true;
+        Torrents.idle(torrenting);
         notifyService(running, speed);
     }
 
@@ -252,7 +305,7 @@ final class Engine {
     synchronized void saveHistory() {
         try {
             JSONArray a = new JSONArray();
-            for (Job j : snapshot()) if (j.status.equals("completed") && j.uri != null) a.put(j.toHistory());
+            for (Download j : snapshot()) if (j.status.equals("completed") && (j.uri != null || j instanceof TorrentJob)) a.put(j.toHistory());
             try (FileOutputStream out = new FileOutputStream(historyFile)) {
                 out.write(a.toString().getBytes(StandardCharsets.UTF_8));
             }
@@ -264,14 +317,15 @@ final class Engine {
         try {
             JSONArray a = new JSONArray(new String(Files.readAllBytes(historyFile.toPath()), StandardCharsets.UTF_8));
             for (int i = 0; i < a.length(); i++) {
-                Job j = Job.restore(this, a.getJSONObject(i));
+                Download j = Download.restore(this, a.getJSONObject(i));
                 if (stillThere(j)) jobs.put(j.id, j);
             }
         } catch (JSONException | IOException ignored) { }
     }
 
     /** The user may have deleted the file from the Files app. */
-    private boolean stillThere(Job j) {
+    private boolean stillThere(Download j) {
+        if (j.uri == null) return true; // a torrent of several files: no single place to check
         try (Cursor c = ctx.getContentResolver().query(j.uri, null, null, null, null)) {
             return c != null && c.moveToFirst();
         } catch (RuntimeException e) {

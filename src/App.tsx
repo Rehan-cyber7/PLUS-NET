@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import { ClipboardPaste, Pause, Play, Plus, RotateCw, Settings2, Trash2, ExternalLink } from 'lucide-react'
+import { ClipboardPaste, FolderOpen, Pause, Play, Plus, RotateCw, Settings2, Trash2, ExternalLink } from 'lucide-react'
 import pkg from '../package.json'
-import { Engine, type Dl, type NetId, type Probe } from './engine'
-import { formatBytes, formatEta, formatSpeed, shares } from './format'
-import { init, netName, refreshNetworks, rename, setLimit, speedHistory, useStore } from './store'
+import { Engine, type Dl, type NetId, type Probe, type TorrentProbe } from './engine'
+import { formatBytes, formatEta, formatSpeed, shares, magnetName } from './format'
+import { chooseFolder, init, netName, refreshNetworks, rename, setLimit, setTheme, speedHistory, useDefaultFolder, useStore } from './store'
+import type { Theme } from './theme'
 import { BlockGrid, Chart, NetIcon, ProgressBar, ShareBar, Sheet, Switch, tone } from './components'
 
 type Tab = 'active' | 'done'
-type SheetState = null | 'add' | 'nets' | { id: string }
+type SheetState = null | 'add' | 'settings' | { id: string }
 
 const pct = (d: Dl): number => (d.total > 0 ? (d.done / d.total) * 100 : 0)
 const msg = (e: unknown): string => (e instanceof Error ? e.message : String(e))
@@ -34,7 +35,7 @@ export default function App(): React.JSX.Element {
             <img src="/icon.png" alt="" className="h-7 w-7 rounded-lg" />
             <h1 className="text-lg font-extrabold tracking-tight">PlusNet</h1>
           </div>
-          <button aria-label="Networks and limits" onClick={() => setSheet('nets')} className="p-2 text-muted-foreground">
+          <button aria-label="Settings" onClick={() => setSheet('settings')} className="p-2 text-muted-foreground">
             <Settings2 size={20} />
           </button>
         </div>
@@ -91,7 +92,7 @@ export default function App(): React.JSX.Element {
       </button>
 
       {sheet === 'add' && <AddSheet onClose={() => setSheet(null)} />}
-      {sheet === 'nets' && <NetworksSheet onClose={() => setSheet(null)} />}
+      {sheet === 'settings' && <SettingsSheet onClose={() => setSheet(null)} />}
       {sheet && typeof sheet === 'object' && <DetailSheet id={sheet.id} onClose={() => setSheet(null)} />}
     </div>
   )
@@ -104,7 +105,9 @@ function statusLine(d: Dl): string {
     case 'paused': return `Paused · ${formatBytes(d.done)} of ${size}`
     case 'error': return d.error ?? 'Failed'
     case 'completed': return `${size} · ${new Date(d.finishedAt).toLocaleDateString()}`
-    default: return [`${formatBytes(d.done)} of ${size}`, d.total > 0 ? `${Math.floor(pct(d))}%` : '', formatEta(d.total - d.done, d.speed)].filter(Boolean).join(' · ')
+    default:
+      if (d.note) return d.note // looking for a torrent, saving its files
+      return [`${formatBytes(d.done)} of ${size}`, d.total > 0 ? `${Math.floor(pct(d))}%` : '', formatEta(d.total - d.done, d.speed), d.kind === 'torrent' ? `${d.peers ?? 0} peers` : ''].filter(Boolean).join(' · ')
   }
 }
 
@@ -160,6 +163,7 @@ function AddSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
   useEffect(() => { void refreshNetworks() }, [])
   const [url, setUrl] = useState('')
   const [info, setInfo] = useState<Probe | null>(null)
+  const [tor, setTor] = useState<TorrentProbe | null>(null) // a torrent or magnet link that has been checked
   const [name, setName] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -172,8 +176,25 @@ function AddSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
 
   async function check(): Promise<void> {
     const u = url.trim()
-    if (/^magnet:/i.test(u) || /\.torrent(\?|$)/i.test(u)) return setErr("Torrents and magnet links aren't supported in the mobile app yet.")
-    if (!/^https?:\/\//i.test(u)) return setErr('Enter a link that starts with http:// or https://')
+    if (/^magnet:/i.test(u) || /\.torrent(\?|#|$)/i.test(u)) {
+      if (!s.settings.torrents) return setErr("Torrents and magnet links aren't available on this device yet.")
+      setErr('')
+      if (/^magnet:/i.test(u)) { // the size is only known once it has been found on the network
+        setTor({ name: magnetName(u) || 'Magnet link', total: -1, files: 0 })
+        return
+      }
+      setBusy(true)
+      try {
+        setTor(await Engine.probeTorrent({ url: u }))
+      } catch (e) {
+        setTor(null)
+        setErr(msg(e))
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+    if (!/^https?:\/\//i.test(u)) return setErr('Enter a link that starts with http://, https:// or magnet:')
     setBusy(true)
     setErr('')
     try {
@@ -185,6 +206,16 @@ function AddSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
       setErr(msg(e))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function startTorrent(): Promise<void> {
+    if (!tor) return
+    try {
+      await Engine.startTorrent({ source: url.trim(), fileName: tor.name })
+      onClose()
+    } catch (e) {
+      setErr(msg(e))
     }
   }
 
@@ -206,7 +237,7 @@ function AddSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
       <div className="flex gap-2">
         <input
           value={url}
-          onChange={(e) => { setUrl(e.target.value); setInfo(null) }}
+          onChange={(e) => { setUrl(e.target.value); setInfo(null); setTor(null) }}
           placeholder="https://example.com/file.zip"
           inputMode="url"
           autoCapitalize="none"
@@ -216,7 +247,7 @@ function AddSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
         />
         <button
           aria-label="Paste"
-          onClick={() => void navigator.clipboard.readText().then((t) => { setUrl(t.trim()); setInfo(null) }).catch(() => setErr('Allow clipboard access, or paste into the field.'))}
+          onClick={() => void navigator.clipboard.readText().then((t) => { setUrl(t.trim()); setInfo(null); setTor(null) }).catch(() => setErr('Allow clipboard access, or paste into the field.'))}
           className="rounded-lg bg-secondary px-3"
         >
           <ClipboardPaste size={18} />
@@ -224,10 +255,28 @@ function AddSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
       </div>
       {err && <p role="alert" className="mt-2 text-sm text-destructive">{err}</p>}
 
-      {!info && (
+      {!info && !tor && (
         <button disabled={busy || !url.trim()} onClick={() => void check()} className="mt-4 w-full rounded-xl bg-primary py-3 font-bold text-primary-foreground disabled:opacity-40">
           {busy ? 'Checking…' : 'Check link'}
         </button>
+      )}
+
+      {tor && (
+        <div className="mt-4 space-y-4">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Torrent</div>
+            <p className="mt-1 break-words text-sm font-semibold">{tor.name}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {[tor.total > 0 ? formatBytes(tor.total) : '', tor.files > 1 ? `${tor.files} files` : '', tor.total < 0 ? 'The size shows once it is found on the network' : ''].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Torrents download over your phone's main connection (Wi-Fi when connected), so Wi-Fi and mobile data are not combined. Files are saved to {s.settings.folderLabel}, and sharing stops when the download finishes.
+          </p>
+          <button onClick={() => void startTorrent()} className="w-full rounded-xl bg-primary py-3 font-bold text-primary-foreground">
+            Start download
+          </button>
+        </div>
       )}
 
       {info && (
@@ -270,6 +319,7 @@ function DetailSheet({ id, onClose }: { id: string; onClose: () => void }): Reac
   const d = s.dls.find((x) => x.id === id)
   const [confirming, setConfirming] = useState(false)
   const [deleteFile, setDeleteFile] = useState(false)
+  const [openErr, setOpenErr] = useState('') // e.g. which folder a multi-file torrent is in
   useEffect(() => { if (!d) onClose() }, [d, onClose])
   if (!d) return null
 
@@ -281,28 +331,37 @@ function DetailSheet({ id, onClose }: { id: string; onClose: () => void }): Reac
   return (
     <Sheet title={d.fileName} onClose={onClose}>
       <p className={`text-sm ${d.status === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>{statusLine(d)}</p>
+      {openErr && <p role="alert" className="mt-2 text-xs text-destructive">{openErr}</p>}
       {!finished && <div className="mt-3"><ProgressBar pct={pct(d)} /></div>}
       {!d.ranges && d.status !== 'queued' && <p className="mt-2 text-xs text-muted-foreground">This server doesn't allow splitting, so one network does all the work.</p>}
 
-      <div className="mt-5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Networks</div>
-      <div className="mt-1 divide-y divide-[var(--border-subtle)]">
-        {d.nets.map((n, i) => (
-          <div key={n.id} className="flex items-center gap-3 py-2.5">
-            <NetIcon id={n.id} size={18} />
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium">{netName(s, n.id)}</div>
-              <div className="font-mono text-xs text-muted-foreground">
-                {n.state === 'on' ? `${running ? formatSpeed(n.speed) + ' · ' : ''}${formatBytes(n.bytes)}` : n.state === 'offline' ? 'Not connected' : n.state === 'failed' ? (n.error || 'Network request failed') : 'Off'}
+      {d.kind === 'torrent' ? (
+        <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
+          Torrent. It downloads over your phone's main connection (Wi-Fi when connected), so Wi-Fi and mobile data are not combined. Sharing stops when it finishes.
+        </p>
+      ) : (
+        <>
+        <div className="mt-5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Networks</div>
+        <div className="mt-1 divide-y divide-[var(--border-subtle)]">
+          {d.nets.map((n, i) => (
+            <div key={n.id} className="flex items-center gap-3 py-2.5">
+              <NetIcon id={n.id} size={18} />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium">{netName(s, n.id)}</div>
+                <div className="font-mono text-xs text-muted-foreground">
+                  {n.state === 'on' ? `${running ? formatSpeed(n.speed) + ' · ' : ''}${formatBytes(n.bytes)}` : n.state === 'offline' ? 'Not connected' : n.state === 'failed' ? (n.error || 'Network request failed') : 'Off'}
+                </div>
               </div>
+              <span className="w-10 text-right font-mono text-xs" style={{ color: tone(n.id).text }}>{share[i]}%</span>
+              {!finished && (
+                <Switch on={n.enabled} label={netName(s, n.id)} color={tone(n.id).solid} onChange={(v) => void Engine.setNetwork({ id: d.id, network: n.id, enabled: v })} />
+              )}
             </div>
-            <span className="w-10 text-right font-mono text-xs" style={{ color: tone(n.id).text }}>{share[i]}%</span>
-            {!finished && (
-              <Switch on={n.enabled} label={netName(s, n.id)} color={tone(n.id).solid} onChange={(v) => void Engine.setNetwork({ id: d.id, network: n.id, enabled: v })} />
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="mt-2"><ShareBar parts={parts} /></div>
+          ))}
+        </div>
+        <div className="mt-2"><ShareBar parts={parts} /></div>
+        </>
+      )}
 
       {!finished && d.cells && (
         <>
@@ -319,7 +378,7 @@ function DetailSheet({ id, onClose }: { id: string; onClose: () => void }): Reac
       {!confirming ? (
         <div className="mt-6 flex gap-2">
           {finished ? (
-            <button onClick={() => void Engine.openFile({ id: d.id }).catch(() => undefined)} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 font-bold text-primary-foreground">
+            <button onClick={() => { setOpenErr(''); void Engine.openFile({ id: d.id }).catch((e) => setOpenErr(msg(e))) }} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 font-bold text-primary-foreground">
               <ExternalLink size={18} /> Open
             </button>
           ) : (
@@ -353,10 +412,64 @@ function DetailSheet({ id, onClose }: { id: string; onClose: () => void }): Reac
 
 const LIMITS = [0, 1, 2, 5, 10, 25]
 
-function NetworksSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
+const THEMES: { id: Theme; label: string }[] = [
+  { id: 'system', label: 'System' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' }
+]
+
+const HEADING = 'mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground'
+
+function SettingsSheet({ onClose }: { onClose: () => void }): React.JSX.Element {
   const s = useStore()
+  const [folderErr, setFolderErr] = useState('')
   return (
-    <Sheet title="Networks" onClose={onClose}>
+    <Sheet title="Settings" onClose={onClose}>
+      <div className="mb-6">
+        <div className={HEADING}>Appearance</div>
+        <div className="flex gap-1.5">
+          {THEMES.map((t) => (
+            <button
+              key={t.id}
+              aria-pressed={s.theme === t.id}
+              onClick={() => setTheme(t.id)}
+              className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold ${s.theme === t.id ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {s.settings.canPickFolder && (
+        <div className="mb-6">
+          <div className={HEADING}>Download location</div>
+          <div className="flex items-center gap-3 rounded-xl bg-secondary px-3.5 py-3">
+            <FolderOpen size={18} className="shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold">{s.settings.folderLabel}</div>
+              <div className="text-xs text-muted-foreground">{s.settings.customFolder ? 'A folder you chose' : 'Default (Downloads folder)'}</div>
+            </div>
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={() => { setFolderErr(''); void chooseFolder().catch((e) => setFolderErr(msg(e))) }}
+              className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
+            >
+              Choose folder
+            </button>
+            {s.settings.customFolder && (
+              <button onClick={() => { setFolderErr(''); void useDefaultFolder().catch((e) => setFolderErr(msg(e))) }} className="rounded-lg bg-secondary px-4 text-sm font-semibold">
+                Use default
+              </button>
+            )}
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">New downloads are saved here. Downloads that are already finished stay where they are.</p>
+          {folderErr && <p role="alert" className="mt-1 text-xs text-destructive">{folderErr}</p>}
+        </div>
+      )}
+
+      <div className={HEADING}>Networks</div>
       <div className="space-y-5">
         {s.nets.filter((n) => n.online || n.id !== 'ethernet').map((n) => (
           <div key={n.id}>
